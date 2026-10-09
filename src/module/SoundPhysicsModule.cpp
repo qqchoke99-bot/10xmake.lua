@@ -1,5 +1,6 @@
 #include "SoundPhysicsModule.hpp"
 #include "core/Hooks.hpp"
+#include "core/Config.hpp"
 #include <soundphysics/Log.hpp>
 #include <unistd.h>
 
@@ -12,8 +13,9 @@ SoundPhysicsModule& SoundPhysicsModule::instance() {
 
 int SoundPhysicsModule::detourSetVolume(void* channel, float volume) {
     auto& self = instance();
+    auto& s = cfg::get();
     float outVol = volume;
-    if (channel) outVol = effects::apply(self.mApi, channel, volume, self.mCfg);
+    if (channel && s.enabled) outVol = effects::apply(self.mApi, channel, volume, s);
     int r = 0;
     if (self.mOrigSetVolume) r = self.mOrigSetVolume(channel, outVol);
     return r;
@@ -37,7 +39,7 @@ bool SoundPhysicsModule::installSetVolumeHook() {
     mOrigSetVolume = reinterpret_cast<FN_SetVolume>(orig);
     mSetVolumeTarget = target;
     mHooked.store(true);
-    SPL_LOGI("HOOKED setVolume | Sound/Low/Volume Occ + RoomReverb + Echo + SOS343");
+    SPL_LOGI("HOOKED setVolume — SPR formulas + config toggles");
     return true;
 }
 
@@ -62,10 +64,25 @@ void SoundPhysicsModule::startRetry() {
     pthread_detach(mRetryThread);
 }
 
+void SoundPhysicsModule::tryLoadConfig() {
+    cfg::resetDefaults();
+    // Common Levi / Android paths
+    const char* paths[] = {
+        "/data/data/org.levimc.launcher/files/mods/soundphysicslite/config/config.json",
+        "/storage/emulated/0/Android/media/org.levimc.launcher/mods/soundphysicslite/config/config.json",
+        "/storage/emulated/0/games/levi/mods/soundphysicslite/config/config.json",
+        "config/config.json",
+        nullptr,
+    };
+    for (int i = 0; paths[i]; ++i) {
+        if (cfg::loadFromFile(paths[i])) return;
+    }
+    SPL_LOGI("Using embedded SPR defaults (global_intensity=%.2f)", cfg::get().globalIntensity);
+}
+
 bool SoundPhysicsModule::load() {
-    SPL_LOGI("SPL v0.22 — all confirmed RE data");
-    SPL_LOGI("FMOD dlsym path | Script getBlockFromRay = binder only | no wall ray yet");
-    SPL_LOGI("FX: SoundOcc LowOcc VolOcc RoomReverb Echo SOS=343");
+    SPL_LOGI("SPL v0.23 — Sound Physics Remastered formulas + config");
+    tryLoadConfig();
     fmodapi::resolve(mApi);
     installSetVolumeHook();
     startRetry();
@@ -74,6 +91,7 @@ bool SoundPhysicsModule::load() {
 
 bool SoundPhysicsModule::enable() {
     SPL_LOGI("SPL enable");
+    tryLoadConfig();
     fmodapi::resolve(mApi);
     installSetVolumeHook();
     startRetry();

@@ -17,7 +17,6 @@ public:
 
 private:
     fmodapi::Api mApi{};
-    effects::Config mCfg{};
     FN_SetVolume mOrigSetVolume = nullptr;
     void* mSetVolumeTarget = nullptr;
     std::atomic<bool> mHooked{false};
@@ -27,6 +26,7 @@ private:
 
     bool installSetVolumeHook();
     void startRetry();
+    void tryLoadConfig();
     static void* retryMain(void* arg);
     static int detourSetVolume(void* channel, float volume);
 };
