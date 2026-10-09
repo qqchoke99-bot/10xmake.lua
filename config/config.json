@@ -1,1 +1,27 @@
+{
+  "enabled": true,
+  "debug_logging": true,
 
+  "attenuation_enabled": true,
+  "air_absorption_enabled": true,
+  "sound_occlusion_enabled": true,
+  "volume_occlusion_enabled": true,
+  "room_reverb_enabled": true,
+  "echo_enabled": true,
+  "speed_of_sound_enabled": true,
+
+  "attenuation_factor": 1.35,
+  "air_absorption": 0.85,
+  "max_occlusion": 0.92,
+  "occlusion_intensity": 1.25,
+  "volume_occlusion_intensity": 1.0,
+  "reverb_gain": 1.40,
+  "reverb_brightness": 0.55,
+  "reverb_distance": 1.15,
+  "echo_intensity": 1.0,
+  "speed_of_sound": 343.0,
+  "max_travel_delay_sec": 0.45,
+  "max_sound_processing_distance": 72.0,
+  "ref_distance": 8.0,
+  "global_intensity": 1.25
+}
