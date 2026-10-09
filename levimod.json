@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "soundphysicslite",
+  "version": "0.22.0-1.26.51",
+  "minecraft_versions": ["1.26.51", "1.26.52"],
+  "info": {
+    "name": "SoundPhysicsLite",
+    "author": "SPL",
+    "description": "Sound/Low/Volume Occlusion, Room Reverb (continuous), Echo, Speed of Sound 343 blk/s. FMOD setVolume path. Script ray strings confirmed binder-only.",
+    "icon": "assets/icon.png",
+    "tags": ["Audio", "Utility"]
+  },
+  "release_assets": {
+    "include": ["*.levipack"]
+  }
+}
