@@ -1,31 +1,37 @@
-# SoundPhysicsLite v0.22
+# SoundPhysics (Levi / xmake)
 
-Built from full RE session data (FMOD + Zaphkiel Script ray findings).
+Port of Sound Physics Remastered style audio for Bedrock via FMOD hooks.
 
 ## Features
-- Sound Occlusion (`set3DOcclusion`)
-- Low Occlusion (lowpass / muffle)
-- Volume Occlusion (volume scale in setVolume detour)
-- Room Reverb continuous (no hard distance cap)
-- Echo + Speed of sound **343 blocks/s**
-
-## RE notes (confirmed)
-- FMOD via `dlsym` — primary path
-- `getBlockFromRay` @ string `0x2510334` / fn `0xe2b7d14` = **Script binder only**
-- `getBlockFromViewVector` @ `0x239c536` / fn `0xe09b0fc` = **Script binder only**
-- Do **not** hook those binder addresses
-- Wall raycast needs native signatures (not in this build)
+| Feature | How |
+|---------|-----|
+| **Raycast occlusion** | Multi-ray path cost listener→source (+ diffraction side rays) |
+| **Occlusion Volume** | Volume cut by blocked path |
+| **Occlusion Lowpass** | FMOD LOWPASS DSP cutoff drops when occluded |
+| **Room reverb** | Probe rays around listener → FMOD system reverb + channel send |
+| **Echo** | Extra wet from reflective probes |
+| **Speed of Sound 343** | Doppler pitch uses `c = 343` blocks/s |
+| **Doppler** | Relative velocity along LOS |
 
 ## Build
-```bash
-xmake f -y -p android -a arm64-v8a -m release --ndk=$ANDROID_NDK_HOME
-xmake -y
-```
-Or GitHub Actions → `SoundPhysicsLite.levipack`
+xmake android arm64 → `SoundPhysics.levipack`
 
-## Package
+## Config
+`/sdcard/games/SoundPhysics/config.json` or ModMenu toggles.
+
+## Raycast binding (important)
+Until `BlockSource` / `getBlockFromRay` is signature-bound, rays treat air as clear
+(distance attenuation + Doppler still work). Hook world ray via:
+
+```cpp
+sp::mc::setBlockRayFn([](const Vec3& from, const Vec3& to) -> RayHit {
+  // call resolved BlockSource raycast
+});
 ```
-manifest.json
-libSoundPhysicsLite.so
-icon.png
-```
+
+Use Zaphkiel on `getBlockFromRay` / `Clip` / `BlockSource` for the real ABI.
+
+## Signature shortcut
+Patterns from working `libSoundPhysicz.so` are in `src/core/memory/Signatures.cpp`.
+On enable they are scanned in `libminecraftpe.so` — no Zaphkiel string targets needed
+for the FMOD path. Check logcat `SoundPhysics` for `sig[N] scan=`.
