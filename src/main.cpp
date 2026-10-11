@@ -17,31 +17,42 @@ void registerAll();
 void unregisterAll();
 }
 
-class SoundPhysicsMod : public pl::Mod {
+// Preloader expects a plain class + PL_REGISTER_MOD(Type, instance())
+// not inheritance from pl::Mod (see CameraOverhaul / SoundPhysicsLite).
+class SoundPhysicsMod {
 public:
-    bool load() override {
+    static SoundPhysicsMod& instance() {
+        static SoundPhysicsMod mod;
+        return mod;
+    }
+
+    bool load(pl::mod::ModContext& /*context*/) {
         LOGI("SoundPhysics load");
         sp::loadConfig();
         return true;
     }
-    bool enable() override {
+
+    bool enable(pl::mod::ModContext& /*context*/) {
         LOGI("SoundPhysics enable — Approach A (libSoundPhysicz signatures)");
         const bool sigs = sp::memory::resolveAll("libminecraftpe.so");
         const bool world = sp::mc::resolveWorldAccess();
         LOGI("sigs_any=%d getBlockRaw=%p GetBlockEntity=%p worldReady=%d",
              sigs,
              sp::mc::g_getBlockRaw,
-             (void*)sp::memory::resolve(sp::memory::SigId::GetBlockEntity),
-             sp::mc::worldReady());
+             reinterpret_cast<void*>(sp::memory::resolve(sp::memory::SigId::GetBlockEntity)),
+             sp::mc::worldReady() ? 1 : 0);
         LOGI("Doppler toggle=%d SoS=%.0f | occlusion=%d",
-             sp::g_cfg.dopplerEnabled, sp::g_cfg.speedOfSound, sp::g_cfg.occlusionEnabled);
+             sp::g_cfg.dopplerEnabled ? 1 : 0,
+             sp::g_cfg.speedOfSound,
+             sp::g_cfg.occlusionEnabled ? 1 : 0);
 
         sp::menu::registerAll();
         const bool fmod = sp::fmodx::resolveAndHook();
-        LOGI("fmod_hooks=%d", fmod);
+        LOGI("fmod_hooks=%d", fmod ? 1 : 0);
         return true;
     }
-    bool disable() override {
+
+    bool disable(pl::mod::ModContext& /*context*/) {
         sp::fmodx::unhookAll();
         sp::menu::unregisterAll();
         sp::memory::clear();
@@ -50,6 +61,10 @@ public:
         sp::mc::g_getBlockRaw = nullptr;
         return true;
     }
+
+    bool unload(pl::mod::ModContext& /*context*/) {
+        return true;
+    }
 };
 
-PL_REGISTER_MOD(SoundPhysicsMod)
+PL_REGISTER_MOD(SoundPhysicsMod, SoundPhysicsMod::instance())
