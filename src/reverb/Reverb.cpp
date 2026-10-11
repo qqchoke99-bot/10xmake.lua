@@ -2,7 +2,6 @@
 #include "mc/Raycast.hpp"
 #include "core/Types.hpp"
 
-#include <algorithm>
 #include <cmath>
 
 namespace sp {
@@ -13,53 +12,59 @@ namespace sp::reverb {
 namespace {
 
 struct Room {
-    float meanDist{8.f};
-    float openness{1.f}; // 1 = outdoor
-    float reflectivity{0.2f};
+    float meanDist = 8.f;
+    float openness = 1.f; // 1 = outdoor
+    float reflectivity = 0.2f;
 };
 
 Room analyze(const Vec3& listener) {
     Room room{};
-    static const sp::Vec3 dirs[] = {
+    static const Vec3 dirs[] = {
         {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1},
         {0.707f, 0, 0.707f}, {-0.707f, 0, 0.707f}, {0.707f, 0, -0.707f}, {-0.707f, 0, -0.707f},
     };
-    float sum = 0.f, refl = 0.f;
+    float sum = 0.f;
+    float refl = 0.f;
     int hits = 0;
-    const int n = 10;
+    constexpr int n = 10;
+    constexpr float maxRange = 32.f;
+
     for (int i = 0; i < n; ++i) {
+        const Vec3 end = listener + dirs[i] * maxRange;
         bool hit = false;
-        float d = sp::mc::rayDistance(listener, dirs[i], 32.f, hit);
+        // API: rayDistance(from, to, hitOut)
+        const float d = sp::mc::rayDistance(listener, end, hit);
         sum += d;
         if (hit) {
             ++hits;
-            auto h = sp::mc::rayCost(listener, listener + dirs[i] * d, 32.f);
-            refl += h.reflectivity;
+            // API: rayCost(from, to) -> float cost
+            const float cost = sp::mc::rayCost(listener, end);
+            // Map cost to a soft reflectivity cue
+            refl += clampf(0.3f + cost * 0.05f, 0.1f, 1.f);
         }
     }
+
     room.meanDist = sum / float(n);
     room.openness = 1.f - float(hits) / float(n);
     room.reflectivity = hits ? (refl / float(hits)) : 0.1f;
     return room;
 }
 
-// FMOD_REVERB_PROPERTIES-like fields we care about (subset)
 struct ReverbProps {
-    float decayTime;
-    float earlyDelay;
-    float lateDelay;
-    float hfReference;
-    float hfDecayRatio;
-    float diffusion;
-    float density;
-    float lowShelfGain;
-    float wetLevel; // dB
+    float decayTime = 1.f;
+    float earlyDelay = 7.f;
+    float lateDelay = 11.f;
+    float hfReference = 5000.f;
+    float hfDecayRatio = 0.5f;
+    float diffusion = 50.f;
+    float density = 100.f;
+    float lowShelfGain = 0.f;
+    float wetLevel = -80.f; // dB
 };
 
 ReverbProps fromRoom(const Room& r) {
     ReverbProps p{};
-    // Smaller meanDist => shorter, denser room
-    const float size = std::clamp(r.meanDist, 2.f, 40.f);
+    const float size = clampf(r.meanDist, 2.f, 40.f);
     p.decayTime = 0.4f + size * 0.08f + r.reflectivity * 1.2f;
     p.earlyDelay = 7.f + size * 0.5f;
     p.lateDelay = 11.f + size * 0.8f;
@@ -68,23 +73,18 @@ ReverbProps fromRoom(const Room& r) {
     p.diffusion = 30.f + r.reflectivity * 70.f;
     p.density = 80.f + (1.f - r.openness) * 20.f;
     p.lowShelfGain = 0.f;
-    // outdoor -> very dry
     float wetLin = (1.f - r.openness) * sp::g_cfg.reverbSend;
-    wetLin = std::clamp(wetLin, 0.f, 1.f);
-    // convert toward dB (0 lin -> -80, 1 -> reverbMaxWetDb)
-    const float maxDb = sp::g_cfg.reverbMaxWetDb; // e.g. -6
+    wetLin = clampf(wetLin, 0.f, 1.f);
+    const float maxDb = sp::g_cfg.reverbMaxWetDb;
     p.wetLevel = -80.f + wetLin * (80.f + maxDb);
     return p;
 }
 
-} // namespace
-
-// Filled by fmod resolve
-using SetReverbPropsFn = int (*)(void* system, int instance, const void* props);
-using SetChannelReverbFn = int (*)(void* channel, int instance, float wet);
 SetReverbPropsFn g_setReverbProps = nullptr;
 SetChannelReverbFn g_setChannelReverb = nullptr;
 void* g_fmodSystem = nullptr;
+
+} // namespace
 
 void setFmod(void* system, SetReverbPropsFn a, SetChannelReverbFn b) {
     g_fmodSystem = system;
@@ -94,11 +94,8 @@ void setFmod(void* system, SetReverbPropsFn a, SetChannelReverbFn b) {
 
 void update(const Vec3& listener) {
     if (!sp::g_cfg.reverbEnabled || !g_fmodSystem || !g_setReverbProps) return;
-    Room room = analyze(listener);
-    ReverbProps p = fromRoom(room);
-    // FMOD expects FMOD_REVERB_PROPERTIES — layout may differ by FMOD version.
-    // We pass our subset as a padded buffer; real binding maps fields correctly
-    // after confirming FMOD version in libfmod.so / libminecraftpe.
+    const Room room = analyze(listener);
+    const ReverbProps p = fromRoom(room);
     alignas(16) float buf[32]{};
     buf[0] = p.decayTime;
     buf[1] = p.earlyDelay;
@@ -114,16 +111,13 @@ void update(const Vec3& listener) {
 
 void onChannel(void* channel, float send) {
     if (!sp::g_cfg.reverbEnabled || !g_setChannelReverb || !channel) return;
-    g_setChannelReverb(channel, 0, std::clamp(send, 0.f, 1.f));
+    g_setChannelReverb(channel, 0, clampf(send, 0.f, 1.f));
 }
 
 void shutdown() {
     g_fmodSystem = nullptr;
+    g_setReverbProps = nullptr;
+    g_setChannelReverb = nullptr;
 }
 
 } // namespace sp::reverb
-
-// expose setter for hooks
-namespace sp::reverb {
-void setFmod(void* system, SetReverbPropsFn a, SetChannelReverbFn b);
-}
