@@ -128,4 +128,20 @@ float rayDistance(const Vec3& from, const Vec3& to, bool& hit) {
     return h.hit ? h.distance : (to - from).length();
 }
 
+
+namespace {
+Vec3 g_listenerPos{};
+Vec3 g_listenerVel{};
+}
+
+void setListener(const Vec3& pos, const Vec3& vel) {
+    g_listenerPos = pos;
+    g_listenerVel = vel;
+}
+
+void getListener(Vec3& pos, Vec3& vel) {
+    pos = g_listenerPos;
+    vel = g_listenerVel;
+}
+
 } // namespace sp::mc
