@@ -89,19 +89,21 @@ void applyAcoustic(void* channel, ChanState& st) {
     sp::mc::getListener(lpos, lvel);
 
     const AcousticResult ac = sp::occ::evaluate(lpos, st.pos, lvel, st.vel);
-    st.lastOccVol = ac.volumeMul;
-    st.lastPitch = ac.pitchMul;
+    // Never store 0 — Minecraft already attenuated; we only scale mildly
+    st.lastOccVol = clampf(ac.volumeMul, 0.2f, 1.f);
+    st.lastPitch = clampf(ac.pitchMul, 0.85f, 1.15f);
 
-    if (p_set3dOcc) {
-        const float directOcc = clampf(1.f - ac.volumeMul, 0.f, 1.f);
-        const float reverbOcc = clampf(1.f - ac.reverbSend, 0.f, 1.f);
+    // set3DOcclusion can mute hard — only when world ray is live and occ > 0
+    if (p_set3dOcc && sp::mc::worldReady() && ac.occlusion > 0.05f) {
+        const float directOcc = clampf(ac.occlusion * 0.5f, 0.f, 0.7f);
+        const float reverbOcc = clampf(1.f - ac.reverbSend, 0.f, 0.7f);
         p_set3dOcc(channel, directOcc, reverbOcc);
     }
 
-    if (sp::g_cfg.occlusionLowpass && p_createDsp && p_addDsp && p_dspFloat && g_system) {
+    if (sp::g_cfg.occlusionLowpass && ac.occlusion > 0.05f && p_createDsp && p_addDsp &&
+        p_dspFloat && g_system) {
         if (!st.lowpassDsp) {
             void* dsp = nullptr;
-            // FMOD_DSP_TYPE_LOWPASS == 4
             if (p_createDsp(g_system, 4, &dsp) == 0 && dsp) {
                 p_addDsp(channel, 0, dsp);
                 st.lowpassDsp = dsp;
@@ -112,7 +114,9 @@ void applyAcoustic(void* channel, ChanState& st) {
         }
     }
 
-    sp::reverb::onChannel(channel, ac.reverbSend);
+    if (ac.reverbSend > 0.01f) {
+        sp::reverb::onChannel(channel, ac.reverbSend);
+    }
 }
 
 int hk_playSound(void* sys, void* sound, void* group, bool paused, void** channel) {
@@ -155,9 +159,11 @@ int hk_setVolume(void* channel, float volume) {
     if (channel && sp::g_cfg.enabled) {
         std::lock_guard<std::mutex> lock(g_mtx);
         auto it = g_chan.find(channel);
-        if (it != g_chan.end()) {
+        if (it != g_chan.end() && it->second.hasPos) {
             it->second.baseVol = volume;
-            out = volume * it->second.lastOccVol;
+            // Only scale when we actually computed a factor; floor 0.2
+            const float mul = clampf(it->second.lastOccVol, 0.2f, 1.f);
+            out = volume * mul;
         }
     }
     return orig_setVol ? orig_setVol(channel, out) : 0;
